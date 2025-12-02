@@ -1,68 +1,71 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Desafio de Adivinhação Cronometrado</title>
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Desafio de Adivinhação Cronometrado</title>
 
-    <script>
-      // --- URL PARAMETER PARSER ---
-      function getAnswerFromURL() {
-        const urlParams = new URLSearchParams(window.location.search);
-        const encodedAnswer = urlParams.get('id');
+        <script>
+            // --- URL PARAMETER PARSER ---
+            function getAnswerFromURL() {
+                const urlParams = new URLSearchParams(window.location.search);
+                const encodedAnswer = urlParams.get("id");
 
-        if (!encodedAnswer) {
-          return null; // No parameter provided
-        }
+                if (!encodedAnswer) {
+                    return null; // No parameter provided
+                }
 
-        try {
-          // Decode from Base64
-          const decodedAnswer = atob(encodedAnswer);
-          return decodedAnswer;
-        } catch (e) {
-          console.error("Invalid id parameter:", e);
-          return null; // Invalid Base64
-        }
-      }
+                try {
+                    // Decode from Base64
+                    const decodedAnswer = atob(encodedAnswer);
+                    return decodedAnswer;
+                } catch (e) {
+                    console.error("Invalid id parameter:", e);
+                    return null; // Invalid Base64
+                }
+            }
 
-      // --- SESSION MANAGEMENT ---
-      const SESSION_KEY = "guessingGameSession";
+            // --- SESSION MANAGEMENT ---
+            const SESSION_KEY = "guessingGameSession";
 
-      function getOrCreateSession() {
-        const existingSession = localStorage.getItem(SESSION_KEY);
+            function getOrCreateSession() {
+                const existingSession = localStorage.getItem(SESSION_KEY);
 
-        if (existingSession) {
-          return JSON.parse(existingSession);
-        }
+                if (existingSession) {
+                    return JSON.parse(existingSession);
+                }
 
-        // New user - ask for name
-        const userName = prompt("Welcome! Please enter your name:");
+                // New user - ask for name
+                const userName = prompt("Welcome! Please enter your name:");
 
-        if (!userName || userName.trim() === "") {
-          // User cancelled or entered nothing
-          return getOrCreateSession(); // Ask again
-        }
+                if (!userName || userName.trim() === "") {
+                    // User cancelled or entered nothing
+                    return getOrCreateSession(); // Ask again
+                }
 
-        // Create unique session
-        const session = {
-          name: userName.trim(),
-          id: Date.now() + "_" + Math.random().toString(36).substring(2, 9),
-          createdAt: Date.now()
-        };
+                // Create unique session
+                const session = {
+                    name: userName.trim(),
+                    id:
+                        Date.now() +
+                        "_" +
+                        Math.random().toString(36).substring(2, 9),
+                    createdAt: Date.now(),
+                };
 
-        localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-        return session;
-      }
+                localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+                return session;
+            }
 
-      // Get or create session
-      const userSession = getOrCreateSession();
+            // Get or create session
+            const userSession = getOrCreateSession();
 
-      // --- CONSTANTES DO JOGO ---
-      const CORRECT_ANSWER = getAnswerFromURL();
+            // --- CONSTANTES DO JOGO ---
+            const CORRECT_ANSWER = getAnswerFromURL();
 
-      // Validate that answer parameter exists
-      if (!CORRECT_ANSWER) {
-        document.body.innerHTML = `
+            // Validate that answer parameter exists
+            if (!CORRECT_ANSWER) {
+                document.body.innerHTML = `
           <div style="display: flex; justify-content: center; align-items: center;
                       min-height: 100vh; text-align: center; font-family: sans-serif;">
             <div>
@@ -72,425 +75,454 @@
             </div>
           </div>
         `;
-        throw new Error("No valid answer parameter provided");
-      }
-
-      const PENALTY_INCREMENT_MS = 5 * 60 * 1000; // 5 minutos em milissegundos
-      const LOCAL_STORAGE_KEY = `guessingGamePenalty_${userSession.id}`;
-
-      // --- UI ELEMENTS ---
-      let inputElement;
-      let submitButton;
-      let messageElement;
-      let countdownElement;
-
-      // --- ESTADO DO JOGO ---
-      let penaltyDurationMs = 0; // Tempo total de penalidade acumulada
-      let lastAttemptTimestamp = 0; // Timestamp (ms) da última tentativa falha
-      let countdownInterval;
-
-      // Utility function to convert milliseconds to HH:MM:SS format
-      function msToTime(duration) {
-        let seconds = Math.floor((duration / 1000) % 60);
-        let minutes = Math.floor((duration / (1000 * 60)) % 60);
-        let hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
-
-        hours = hours < 10 ? "0" + hours : hours;
-        minutes = minutes < 10 ? "0" + minutes : minutes;
-        seconds = seconds < 10 ? "0" + seconds : seconds;
-
-        return hours + ":" + minutes + ":" + seconds;
-      }
-
-      // --- FUNÇÕES DE ARMAZENAMENTO LOCAL (LOCALSTORAGE) ---
-
-      function loadGameState() {
-        const storedState = localStorage.getItem(LOCAL_STORAGE_KEY);
-        if (storedState) {
-          try {
-            const data = JSON.parse(storedState);
-            penaltyDurationMs = data.penaltyDurationMs || 0;
-            lastAttemptTimestamp = data.lastAttemptTimestamp || 0;
-            console.log("Estado do jogo carregado do LocalStorage.");
-          } catch (e) {
-            console.error("Erro ao carregar estado do LocalStorage:", e);
-            localStorage.removeItem(LOCAL_STORAGE_KEY); // Limpa estado corrompido
-          }
-        }
-      }
-
-      function saveGameState() {
-        const data = {
-          penaltyDurationMs: penaltyDurationMs,
-          lastAttemptTimestamp: Date.now(),
-        };
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
-        lastAttemptTimestamp = data.lastAttemptTimestamp; // Atualiza o estado local
-        console.log("Estado do jogo salvo no LocalStorage.");
-      }
-
-      function resetGameState() {
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-        penaltyDurationMs = 0;
-        lastAttemptTimestamp = 0;
-        console.log("Estado do jogo redefinido.");
-      }
-
-      // --- UI AND GAME LOGIC ---
-
-      function createConfetti() {
-        const confettiContainer = document.createElement("div");
-        confettiContainer.className = "confetti-container";
-        document.body.appendChild(confettiContainer);
-
-        const colors = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#ffa500", "#ff1493"];
-        const confettiCount = 150;
-
-        for (let i = 0; i < confettiCount; i++) {
-          const confetti = document.createElement("div");
-          confetti.className = "confetti";
-          confetti.style.left = Math.random() * 100 + "%";
-          confetti.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
-          confetti.style.animationDelay = Math.random() * 0.5 + "s";
-          confetti.style.animationDuration = Math.random() * 2 + 2 + "s";
-          confettiContainer.appendChild(confetti);
-        }
-
-        // Remove confetti after animation
-        setTimeout(() => {
-          confettiContainer.remove();
-        }, 5000);
-      }
-
-      function updateCountdown() {
-        const now = Date.now();
-        const unlockTime = lastAttemptTimestamp + penaltyDurationMs;
-        const remainingMs = unlockTime - now;
-
-        if (remainingMs <= 0) {
-          clearInterval(countdownInterval);
-          countdownInterval = null;
-          // Habilita input e botão
-          inputElement.disabled = false;
-          submitButton.disabled = false;
-          countdownElement.classList.add("hidden");
-          messageElement.textContent =
-            "A entrada está reativada! Tente adivinhar o número.";
-          inputElement.focus();
-          return;
-        }
-
-        // A contagem ainda está em andamento (penalizado)
-        inputElement.disabled = true;
-        submitButton.disabled = true;
-        countdownElement.classList.remove("hidden");
-
-        const timeString = msToTime(remainingMs);
-        countdownElement.textContent = `Reativar em: ${timeString}`;
-        messageElement.textContent = `Você errou a resposta. A entrada está desativada até o fim da contagem regressiva.`;
-      }
-
-      function updateUI() {
-        if (countdownInterval) {
-          clearInterval(countdownInterval);
-        }
-
-        const now = Date.now();
-        const unlockTime = lastAttemptTimestamp + penaltyDurationMs;
-
-        if (unlockTime > now) {
-          // Inicia contagem regressiva
-          countdownInterval = setInterval(updateCountdown, 1000);
-          updateCountdown(); // Chama imediatamente para evitar 1 segundo de atraso
-        } else {
-          // Não penalizado, habilita tudo
-          inputElement.disabled = false;
-          submitButton.disabled = false;
-          countdownElement.classList.add("hidden");
-          messageElement.textContent = `Digite seu palpite.`;
-        }
-      }
-
-      function handleSubmit() {
-        if (inputElement.disabled) {
-          messageElement.textContent =
-            "Aguarde o fim do cronômetro antes de tentar adivinhar novamente.";
-          return;
-        }
-
-        const guess = inputElement.value.trim();
-        inputElement.value = ""; // Limpa o input imediatamente
-
-        if (guess.toLowerCase() === CORRECT_ANSWER.toLowerCase()) {
-          // --- RESPOSTA CORRETA ---
-          messageElement.className = "success";
-          messageElement.textContent =
-            "🎉 Parabéns! Você adivinhou a resposta correta!";
-
-          // Trigger confetti animation
-          createConfetti();
-
-          // Redefine o estado de penalidade (LocalStorage)
-          resetGameState();
-
-          // Enable input and hide countdown without changing the success message
-          inputElement.disabled = false;
-          submitButton.disabled = false;
-          countdownElement.classList.add("hidden");
-        } else {
-          // --- RESPOSTA INCORRETA ---
-          messageElement.className = "error";
-          messageElement.textContent = "❌ Você errou! Entrada desativada.";
-
-          // Aumenta a penalidade e salva o estado
-          penaltyDurationMs += PENALTY_INCREMENT_MS;
-          saveGameState();
-
-          // Inicia nova contagem regressiva
-          updateUI();
-        }
-      }
-
-      function initializeGame() {
-        // Associa elementos da UI
-        inputElement = document.getElementById("guessInput");
-        submitButton = document.getElementById("submitButton");
-        messageElement = document.getElementById("messageDisplay");
-        countdownElement = document.getElementById("countdownDisplay");
-
-        // Display welcome message with user's name
-        document.getElementById("userName").textContent = userSession.name;
-
-        // Carrega estado do LocalStorage
-        loadGameState();
-
-        // Configura listeners
-        submitButton.addEventListener("click", handleSubmit);
-        inputElement.addEventListener("keypress", function (e) {
-          if (e.key === "Enter") {
-            handleSubmit();
-          }
-        });
-
-        // Atualiza a interface (inicia o contador se necessário)
-        updateUI();
-      }
-
-      // Inicializa tudo quando a janela carrega
-      window.onload = initializeGame;
-    </script>
-
-    <style>
-      html {
-        box-sizing: border-box;
-      }
-
-      *,
-      *::before,
-      *::after {
-        box-sizing: inherit;
-        margin: 0;
-        padding: 0;
-      }
-
-      body {
-        font-family:
-          "Inter",
-          -apple-system,
-          BlinkMacSystemFont,
-          "Segoe UI",
-          Roboto,
-          sans-serif;
-        background-color: #f3f4f6;
-        min-height: 100dvh;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        padding: 1rem;
-      }
-
-      .container {
-        width: 100%;
-        max-width: 32rem;
-        background-color: white;
-        padding: 2rem;
-        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-        border-radius: 0.75rem;
-        text-align: center;
-      }
-
-      @media (min-width: 768px) {
-        .container {
-          padding: 2.5rem;
-        }
-      }
-
-      h1 {
-        font-size: 1.875rem;
-        font-weight: 800;
-        color: #1f2937;
-        margin-bottom: 1rem;
-      }
-
-      .subtitle {
-        color: #6b7280;
-        margin-bottom: 1rem;
-      }
-
-      .welcome {
-        color: #4f46e5;
-        font-weight: 600;
-        margin-bottom: 1.5rem;
-      }
-
-      /* Confetti Animation */
-      .confetti {
-        position: fixed;
-        width: 10px;
-        height: 10px;
-        background-color: #f0f;
-        animation: confetti-fall 3s linear forwards;
-      }
-
-      @keyframes confetti-fall {
-        to {
-          transform: translateY(100vh) rotate(360deg);
-          opacity: 0;
-        }
-      }
-
-      .confetti-container {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 9999;
-      }
-
-      #messageDisplay {
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: #374151;
-        margin-bottom: 1.5rem;
-        min-height: 3rem;
-      }
-
-      #messageDisplay.success {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #16a34a;
-      }
-
-      #messageDisplay.error {
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: #dc2626;
-      }
-
-      #countdownDisplay {
-        font-size: 1.875rem;
-        font-family: monospace;
-        color: #b91c1c;
-        background-color: #fee2e2;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin-bottom: 1.5rem;
-        box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
-      }
-
-      #countdownDisplay.hidden {
-        display: none;
-      }
-
-      .input-group {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-      }
-
-      #guessInput {
-        flex-grow: 1;
-        padding: 1rem;
-        border: 2px solid #a5b4fc;
-        border-radius: 0.5rem;
-        font-size: 1.125rem;
-        text-align: center;
-        transition: all 150ms;
-        outline: none;
-      }
-
-      #guessInput:focus {
-        outline: none;
-        border-color: #4f46e5;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.5);
-      }
-
-      #guessInput:disabled {
-        background-color: #f9fafb;
-        color: #9ca3af;
-        cursor: not-allowed;
-      }
-
-      #submitButton {
-        padding: 1rem 1.5rem;
-        background-color: #4f46e5;
-        color: white;
-        font-weight: 700;
-        border: none;
-        border-radius: 0.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        cursor: pointer;
-        transition: all 150ms;
-      }
-
-      #submitButton:hover:not(:disabled) {
-        background-color: #4338ca;
-        transform: scale(1.02);
-      }
-
-      #submitButton:disabled {
-        background-color: #9ca3af;
-        box-shadow: none;
-        cursor: not-allowed;
-        transform: none;
-      }
-    </style>
-  </head>
-
-  <body>
-    <div class="container">
-      <h1>O Desafio de Adivinhação</h1>
-      <p class="subtitle">
-        Adivinhe o número secreto de um dígito! Uma resposta errada gera uma
-        penalidade de 5 minutos.
-      </p>
-
-      <!-- Welcome Message -->
-      <p id="welcomeMessage" class="welcome">Bem-vindo, <span id="userName"></span>!</p>
-
-      <!-- Message/Status Display -->
-      <div id="messageDisplay">Carregando estado do jogo...</div>
-
-      <!-- Countdown Timer -->
-      <div id="countdownDisplay" class="hidden">Reativar em: 00:00:00</div>
-
-      <!-- Input and Button Group -->
-      <div class="input-group">
-        <input
-          type="text"
-          id="guessInput"
-          placeholder="Digite seu palpite"
-          maxlength="5"
-          inputmode="numeric"
-          disabled
-        />
-        <button id="submitButton" onclick="handleSubmit()" disabled>
-          Enviar Palpite
-        </button>
-      </div>
-    </div>
-  </body>
+                throw new Error("No valid answer parameter provided");
+            }
+
+            // const PENALTY_INCREMENT_MS = 5 * 60 * 1000; // 5 minutos em milissegundos
+            const PENALTY_INCREMENT_MS = 1000; // 5 minutos em milissegundos
+            const LOCAL_STORAGE_KEY = `guessingGamePenalty_${userSession.id}`;
+
+            // --- UI ELEMENTS ---
+            let inputElement;
+            let submitButton;
+            let messageElement;
+            let countdownElement;
+
+            // --- ESTADO DO JOGO ---
+            let penaltyDurationMs = 0; // Tempo total de penalidade acumulada
+            let lastAttemptTimestamp = 0; // Timestamp (ms) da última tentativa falha
+            let countdownInterval;
+
+            // Utility function to convert milliseconds to HH:MM:SS format
+            function msToTime(duration) {
+                let seconds = Math.floor((duration / 1000) % 60);
+                let minutes = Math.floor((duration / (1000 * 60)) % 60);
+                let hours = Math.floor((duration / (1000 * 60 * 60)) % 24);
+
+                hours = hours < 10 ? "0" + hours : hours;
+                minutes = minutes < 10 ? "0" + minutes : minutes;
+                seconds = seconds < 10 ? "0" + seconds : seconds;
+
+                return hours + ":" + minutes + ":" + seconds;
+            }
+
+            // --- FUNÇÕES DE ARMAZENAMENTO LOCAL (LOCALSTORAGE) ---
+
+            function loadGameState() {
+                const storedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedState) {
+                    try {
+                        const data = JSON.parse(storedState);
+                        penaltyDurationMs = data.penaltyDurationMs || 0;
+                        lastAttemptTimestamp = data.lastAttemptTimestamp || 0;
+                        console.log(
+                            "Estado do jogo carregado do LocalStorage.",
+                        );
+                    } catch (e) {
+                        console.error(
+                            "Erro ao carregar estado do LocalStorage:",
+                            e,
+                        );
+                        localStorage.removeItem(LOCAL_STORAGE_KEY); // Limpa estado corrompido
+                    }
+                }
+            }
+
+            function saveGameState() {
+                const data = {
+                    penaltyDurationMs: penaltyDurationMs,
+                    lastAttemptTimestamp: Date.now(),
+                };
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+                lastAttemptTimestamp = data.lastAttemptTimestamp; // Atualiza o estado local
+                console.log("Estado do jogo salvo no LocalStorage.");
+            }
+
+            function resetGameState() {
+                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                penaltyDurationMs = 0;
+                lastAttemptTimestamp = 0;
+                console.log("Estado do jogo redefinido.");
+            }
+
+            // --- UI AND GAME LOGIC ---
+
+            function createConfetti() {
+                const confettiContainer = document.createElement("div");
+                confettiContainer.className = "confetti-container";
+                document.body.appendChild(confettiContainer);
+
+                const colors = [
+                    "#ff0000",
+                    "#00ff00",
+                    "#0000ff",
+                    "#ffff00",
+                    "#ff00ff",
+                    "#00ffff",
+                    "#ffa500",
+                    "#ff1493",
+                ];
+                const confettiCount = 150;
+
+                for (let i = 0; i < confettiCount; i++) {
+                    const confetti = document.createElement("div");
+                    confetti.className = "confetti";
+                    confetti.style.left = Math.random() * 100 + "%";
+                    confetti.style.backgroundColor =
+                        colors[Math.floor(Math.random() * colors.length)];
+                    confetti.style.animationDelay = Math.random() * 0.5 + "s";
+                    confetti.style.animationDuration =
+                        Math.random() * 2 + 2 + "s";
+                    confettiContainer.appendChild(confetti);
+                }
+
+                // Remove confetti after animation
+                setTimeout(() => {
+                    confettiContainer.remove();
+                }, 5000);
+            }
+
+            function updateCountdown() {
+                const now = Date.now();
+                const unlockTime = lastAttemptTimestamp + penaltyDurationMs;
+                const remainingMs = unlockTime - now;
+
+                if (remainingMs <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                    // Habilita input e botão
+                    inputElement.disabled = false;
+                    submitButton.disabled = false;
+                    countdownElement.classList.add("hidden");
+                    messageElement.textContent =
+                        "A entrada está reativada! Tente adivinhar o número.";
+                    inputElement.focus();
+                    return;
+                }
+
+                // A contagem ainda está em andamento (penalizado)
+                inputElement.disabled = true;
+                submitButton.disabled = true;
+                countdownElement.classList.remove("hidden");
+
+                const timeString = msToTime(remainingMs);
+                countdownElement.textContent = `Reativar em: ${timeString}`;
+                messageElement.textContent = `Você errou a resposta. A entrada está desativada até o fim da contagem regressiva.`;
+            }
+
+            function updateUI() {
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                }
+
+                const now = Date.now();
+                const unlockTime = lastAttemptTimestamp + penaltyDurationMs;
+
+                if (unlockTime > now) {
+                    // Inicia contagem regressiva
+                    countdownInterval = setInterval(updateCountdown, 1000);
+                    updateCountdown(); // Chama imediatamente para evitar 1 segundo de atraso
+                } else {
+                    // Não penalizado, habilita tudo
+                    inputElement.disabled = false;
+                    submitButton.disabled = false;
+                    countdownElement.classList.add("hidden");
+                    messageElement.textContent = `Digite seu palpite.`;
+                }
+            }
+
+            function handleSubmit() {
+                if (inputElement.disabled) {
+                    messageElement.textContent =
+                        "Aguarde o fim do cronômetro antes de tentar adivinhar novamente.";
+                    return;
+                }
+
+                const guess = inputElement.value.trim();
+                inputElement.value = ""; // Limpa o input imediatamente
+
+                if (guess.toLowerCase() === CORRECT_ANSWER.toLowerCase()) {
+                    // --- RESPOSTA CORRETA ---
+                    // Clear any running countdown interval first
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                        countdownInterval = null;
+                    }
+
+                    messageElement.className = "success";
+                    messageElement.textContent =
+                        "🎉 Parabéns! Você adivinhou a resposta correta!";
+
+                    // Trigger confetti animation
+                    createConfetti();
+
+                    // Redefine o estado de penalidade (LocalStorage)
+                    resetGameState();
+
+                    // Enable input and hide countdown without changing the success message
+                    inputElement.disabled = false;
+                    submitButton.disabled = false;
+                    countdownElement.classList.add("hidden");
+                } else {
+                    // --- RESPOSTA INCORRETA ---
+                    messageElement.className = "error";
+                    messageElement.textContent =
+                        "❌ Você errou! Entrada desativada.";
+
+                    // Aumenta a penalidade e salva o estado
+                    penaltyDurationMs += PENALTY_INCREMENT_MS;
+                    saveGameState();
+
+                    // Inicia nova contagem regressiva
+                    updateUI();
+                }
+            }
+
+            function initializeGame() {
+                // Associa elementos da UI
+                inputElement = document.getElementById("guessInput");
+                submitButton = document.getElementById("submitButton");
+                messageElement = document.getElementById("messageDisplay");
+                countdownElement = document.getElementById("countdownDisplay");
+
+                // Display welcome message with user's name
+                document.getElementById("userName").textContent =
+                    userSession.name;
+
+                // Carrega estado do LocalStorage
+                loadGameState();
+
+                // Configura listeners
+                submitButton.addEventListener("click", handleSubmit);
+                inputElement.addEventListener("keypress", function (e) {
+                    if (e.key === "Enter") {
+                        handleSubmit();
+                    }
+                });
+
+                // Atualiza a interface (inicia o contador se necessário)
+                updateUI();
+            }
+
+            // Inicializa tudo quando a janela carrega
+            window.onload = initializeGame;
+        </script>
+
+        <style>
+            html {
+                box-sizing: border-box;
+            }
+
+            *,
+            *::before,
+            *::after {
+                box-sizing: inherit;
+                margin: 0;
+                padding: 0;
+            }
+
+            body {
+                font-family:
+                    "Inter",
+                    -apple-system,
+                    BlinkMacSystemFont,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                background-color: #f3f4f6;
+                min-height: 100dvh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+                padding: 1rem;
+            }
+
+            .container {
+                width: 100%;
+                max-width: 32rem;
+                background-color: white;
+                padding: 2rem;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+                border-radius: 0.75rem;
+                text-align: center;
+            }
+
+            @media (min-width: 768px) {
+                .container {
+                    padding: 2.5rem;
+                }
+            }
+
+            h1 {
+                font-size: 1.875rem;
+                font-weight: 800;
+                color: #1f2937;
+                margin-bottom: 1rem;
+            }
+
+            .subtitle {
+                color: #6b7280;
+                margin-bottom: 1rem;
+            }
+
+            .welcome {
+                color: #4f46e5;
+                font-weight: 600;
+                margin-bottom: 1.5rem;
+            }
+
+            /* Confetti Animation */
+            .confetti {
+                position: fixed;
+                width: 10px;
+                height: 10px;
+                background-color: #f0f;
+                animation: confetti-fall 3s linear forwards;
+            }
+
+            @keyframes confetti-fall {
+                to {
+                    transform: translateY(100vh) rotate(360deg);
+                    opacity: 0;
+                }
+            }
+
+            .confetti-container {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                pointer-events: none;
+                z-index: 9999;
+            }
+
+            #messageDisplay {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #374151;
+                margin-bottom: 1.5rem;
+                min-height: 3rem;
+            }
+
+            #messageDisplay.success {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #16a34a;
+            }
+
+            #messageDisplay.error {
+                font-size: 1.5rem;
+                font-weight: 700;
+                color: #dc2626;
+            }
+
+            #countdownDisplay {
+                font-size: 1.875rem;
+                font-family: monospace;
+                color: #b91c1c;
+                background-color: #fee2e2;
+                padding: 1rem;
+                border-radius: 0.5rem;
+                margin-bottom: 1.5rem;
+                box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+            }
+
+            #countdownDisplay.hidden {
+                display: none;
+            }
+
+            .input-group {
+                display: flex;
+                flex-direction: column;
+                gap: 1rem;
+            }
+
+            #guessInput {
+                flex-grow: 1;
+                padding: 1rem;
+                border: 2px solid #a5b4fc;
+                border-radius: 0.5rem;
+                font-size: 1.125rem;
+                text-align: center;
+                transition: all 150ms;
+                outline: none;
+            }
+
+            #guessInput:focus {
+                outline: none;
+                border-color: #4f46e5;
+                box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.5);
+            }
+
+            #guessInput:disabled {
+                background-color: #f9fafb;
+                color: #9ca3af;
+                cursor: not-allowed;
+            }
+
+            #submitButton {
+                padding: 1rem 1.5rem;
+                background-color: #4f46e5;
+                color: white;
+                font-weight: 700;
+                border: none;
+                border-radius: 0.5rem;
+                box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+                cursor: pointer;
+                transition: all 150ms;
+            }
+
+            #submitButton:hover:not(:disabled) {
+                background-color: #4338ca;
+                transform: scale(1.02);
+            }
+
+            #submitButton:disabled {
+                background-color: #9ca3af;
+                box-shadow: none;
+                cursor: not-allowed;
+                transform: none;
+            }
+        </style>
+    </head>
+
+    <body>
+        <div class="container">
+            <h1>O Desafio de Adivinhação</h1>
+            <p class="subtitle">
+                Adivinhe o número secreto de um dígito! Uma resposta errada gera
+                uma penalidade de 5 minutos.
+            </p>
+
+            <!-- Welcome Message -->
+            <p id="welcomeMessage" class="welcome">
+                Bem-vindo, <span id="userName"></span>!
+            </p>
+
+            <!-- Message/Status Display -->
+            <div id="messageDisplay">Carregando estado do jogo...</div>
+
+            <!-- Countdown Timer -->
+            <div id="countdownDisplay" class="hidden">
+                Reativar em: 00:00:00
+            </div>
+
+            <!-- Input and Button Group -->
+            <div class="input-group">
+                <input
+                    type="text"
+                    id="guessInput"
+                    placeholder="Digite seu palpite"
+                    maxlength="5"
+                    inputmode="numeric"
+                    disabled
+                />
+                <button id="submitButton" onclick="handleSubmit()" disabled>
+                    Enviar Palpite
+                </button>
+            </div>
+        </div>
+    </body>
 </html>

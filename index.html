@@ -3,6 +3,9 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta name="description" content="Desafio de adivinhação com sistema de penalidade temporal. Teste suas habilidades de dedução!" />
+        <meta name="theme-color" content="#4f46e5" />
+        <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎯</text></svg>">
         <title>Desafio de Adivinhação Cronometrado</title>
 
         <script>
@@ -27,23 +30,17 @@
 
             // --- SESSION MANAGEMENT ---
             const SESSION_KEY = "guessingGameSession";
+            let userSession = null;
 
-            function getOrCreateSession() {
+            function getExistingSession() {
                 const existingSession = localStorage.getItem(SESSION_KEY);
-
                 if (existingSession) {
                     return JSON.parse(existingSession);
                 }
+                return null;
+            }
 
-                // New user - ask for name
-                const userName = prompt("Welcome! Please enter your name:");
-
-                if (!userName || userName.trim() === "") {
-                    // User cancelled or entered nothing
-                    return getOrCreateSession(); // Ask again
-                }
-
-                // Create unique session
+            function createSession(userName) {
                 const session = {
                     name: userName.trim(),
                     id:
@@ -52,13 +49,58 @@
                         Math.random().toString(36).substring(2, 9),
                     createdAt: Date.now(),
                 };
-
                 localStorage.setItem(SESSION_KEY, JSON.stringify(session));
                 return session;
             }
 
-            // Get or create session
-            const userSession = getOrCreateSession();
+            function showNameModal() {
+                const modal = document.getElementById("nameModal");
+                const nameInput = document.getElementById("nameInput");
+                const nameSubmit = document.getElementById("nameSubmit");
+                const nameError = document.getElementById("nameError");
+
+                modal.classList.remove("hidden");
+                nameInput.focus();
+
+                function handleSubmit() {
+                    const userName = nameInput.value.trim();
+                    if (!userName) {
+                        nameError.textContent = "Por favor, digite seu nome.";
+                        nameError.classList.remove("hidden");
+                        nameInput.focus();
+                        return;
+                    }
+
+                    // Create session and hide modal
+                    userSession = createSession(userName);
+                    modal.classList.add("hidden");
+
+                    // Initialize the game now that we have a session
+                    initializeGame();
+                }
+
+                function handleKeyPress(e) {
+                    if (e.key === "Enter") {
+                        handleSubmit();
+                    } else if (e.key === "Escape") {
+                        // Clear error on ESC
+                        nameError.classList.add("hidden");
+                    }
+                }
+
+                nameSubmit.addEventListener("click", handleSubmit);
+                nameInput.addEventListener("keypress", handleKeyPress);
+
+                // Close modal on ESC key
+                document.addEventListener("keydown", function(e) {
+                    if (e.key === "Escape" && !modal.classList.contains("hidden")) {
+                        nameError.classList.add("hidden");
+                    }
+                });
+            }
+
+            // Check for existing session on load
+            userSession = getExistingSession();
 
             // --- CONSTANTES DO JOGO ---
             const CORRECT_ANSWER = getAnswerFromURL();
@@ -78,9 +120,7 @@
                 throw new Error("No valid answer parameter provided");
             }
 
-            // const PENALTY_INCREMENT_MS = 5 * 60 * 1000; // 5 minutos em milissegundos
-            const PENALTY_INCREMENT_MS = 1000; // 5 minutos em milissegundos
-            const LOCAL_STORAGE_KEY = `guessingGamePenalty_${userSession.id}`;
+            const PENALTY_INCREMENT_MS = 5 * 60 * 1000; // 5 minutos em milissegundos
 
             // --- UI ELEMENTS ---
             let inputElement;
@@ -108,8 +148,12 @@
 
             // --- FUNÇÕES DE ARMAZENAMENTO LOCAL (LOCALSTORAGE) ---
 
+            function getStorageKey() {
+                return `guessingGamePenalty_${userSession.id}`;
+            }
+
             function loadGameState() {
-                const storedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+                const storedState = localStorage.getItem(getStorageKey());
                 if (storedState) {
                     try {
                         const data = JSON.parse(storedState);
@@ -123,7 +167,7 @@
                             "Erro ao carregar estado do LocalStorage:",
                             e,
                         );
-                        localStorage.removeItem(LOCAL_STORAGE_KEY); // Limpa estado corrompido
+                        localStorage.removeItem(getStorageKey()); // Limpa estado corrompido
                     }
                 }
             }
@@ -133,13 +177,13 @@
                     penaltyDurationMs: penaltyDurationMs,
                     lastAttemptTimestamp: Date.now(),
                 };
-                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
+                localStorage.setItem(getStorageKey(), JSON.stringify(data));
                 lastAttemptTimestamp = data.lastAttemptTimestamp; // Atualiza o estado local
                 console.log("Estado do jogo salvo no LocalStorage.");
             }
 
             function resetGameState() {
-                localStorage.removeItem(LOCAL_STORAGE_KEY);
+                localStorage.removeItem(getStorageKey());
                 penaltyDurationMs = 0;
                 lastAttemptTimestamp = 0;
                 console.log("Estado do jogo redefinido.");
@@ -148,6 +192,16 @@
             // --- UI AND GAME LOGIC ---
 
             function createConfetti() {
+                // Check if user prefers reduced motion
+                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    // Show static celebration instead
+                    messageElement.style.animation = 'pulse 0.5s ease';
+                    setTimeout(() => {
+                        messageElement.style.animation = '';
+                    }, 500);
+                    return;
+                }
+
                 const confettiContainer = document.createElement("div");
                 confettiContainer.className = "confetti-container";
                 document.body.appendChild(confettiContainer);
@@ -173,6 +227,7 @@
                     confetti.style.animationDelay = Math.random() * 0.5 + "s";
                     confetti.style.animationDuration =
                         Math.random() * 2 + 2 + "s";
+                    confetti.style.willChange = "transform";
                     confettiContainer.appendChild(confetti);
                 }
 
@@ -192,22 +247,26 @@
                     countdownInterval = null;
                     // Habilita input e botão
                     inputElement.disabled = false;
+                    inputElement.removeAttribute('aria-disabled');
                     submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-disabled');
                     countdownElement.classList.add("hidden");
                     messageElement.textContent =
-                        "A entrada está reativada! Tente adivinhar o número.";
+                        "✅ Entrada reativada! Digite seu próximo palpite.";
                     inputElement.focus();
                     return;
                 }
 
                 // A contagem ainda está em andamento (penalizado)
                 inputElement.disabled = true;
+                inputElement.setAttribute('aria-disabled', 'true');
                 submitButton.disabled = true;
+                submitButton.setAttribute('aria-disabled', 'true');
                 countdownElement.classList.remove("hidden");
 
                 const timeString = msToTime(remainingMs);
                 countdownElement.textContent = `Reativar em: ${timeString}`;
-                messageElement.textContent = `Você errou a resposta. A entrada está desativada até o fim da contagem regressiva.`;
+                messageElement.textContent = `⏱️ Aguarde o fim do cronômetro antes de tentar novamente.`;
             }
 
             function updateUI() {
@@ -225,7 +284,9 @@
                 } else {
                     // Não penalizado, habilita tudo
                     inputElement.disabled = false;
+                    inputElement.removeAttribute('aria-disabled');
                     submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-disabled');
                     countdownElement.classList.add("hidden");
                     messageElement.textContent = `Digite seu palpite.`;
                 }
@@ -233,13 +294,23 @@
 
             function handleSubmit() {
                 if (inputElement.disabled) {
+                    messageElement.className = "warning";
                     messageElement.textContent =
-                        "Aguarde o fim do cronômetro antes de tentar adivinhar novamente.";
+                        "⏱️ Aguarde o fim do cronômetro antes de tentar novamente.";
                     return;
                 }
 
                 const guess = inputElement.value.trim();
-                inputElement.value = ""; // Limpa o input imediatamente
+
+                // Validate empty input
+                if (guess === "") {
+                    messageElement.className = "warning";
+                    messageElement.textContent = "⚠️ Por favor, digite um palpite antes de enviar.";
+                    inputElement.focus();
+                    return;
+                }
+
+                inputElement.value = ""; // Limpa o input após validação
 
                 if (guess.toLowerCase() === CORRECT_ANSWER.toLowerCase()) {
                     // --- RESPOSTA CORRETA ---
@@ -261,13 +332,15 @@
 
                     // Enable input and hide countdown without changing the success message
                     inputElement.disabled = false;
+                    inputElement.removeAttribute('aria-disabled');
                     submitButton.disabled = false;
+                    submitButton.removeAttribute('aria-disabled');
                     countdownElement.classList.add("hidden");
                 } else {
                     // --- RESPOSTA INCORRETA ---
                     messageElement.className = "error";
                     messageElement.textContent =
-                        "❌ Você errou! Entrada desativada.";
+                        "❌ Resposta incorreta. Aguarde o cronômetro para tentar novamente.";
 
                     // Aumenta a penalidade e salva o estado
                     penaltyDurationMs += PENALTY_INCREMENT_MS;
@@ -305,7 +378,15 @@
             }
 
             // Inicializa tudo quando a janela carrega
-            window.onload = initializeGame;
+            window.onload = function() {
+                if (!userSession) {
+                    // Show name modal for new users
+                    showNameModal();
+                } else {
+                    // Existing user - initialize game directly
+                    initializeGame();
+                }
+            };
         </script>
 
         <style>
@@ -418,10 +499,16 @@
                 color: #dc2626;
             }
 
+            #messageDisplay.warning {
+                font-size: 1.25rem;
+                font-weight: 600;
+                color: #d97706;
+            }
+
             #countdownDisplay {
                 font-size: 1.875rem;
                 font-family: monospace;
-                color: #b91c1c;
+                color: #991b1b;
                 background-color: #fee2e2;
                 padding: 1rem;
                 border-radius: 0.5rem;
@@ -485,15 +572,157 @@
                 cursor: not-allowed;
                 transform: none;
             }
+
+            #submitButton:focus-visible {
+                outline: 3px solid #4f46e5;
+                outline-offset: 2px;
+            }
+
+            #submitButton:focus:not(:focus-visible) {
+                outline: none;
+            }
+
+            .visually-hidden {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                margin: -1px;
+                padding: 0;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                white-space: nowrap;
+                border-width: 0;
+            }
+
+            /* Modal Styles */
+            .modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            }
+
+            .modal.hidden {
+                display: none;
+            }
+
+            .modal-content {
+                background-color: white;
+                padding: 2rem;
+                border-radius: 0.75rem;
+                box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+                max-width: 400px;
+                width: 90%;
+                text-align: center;
+            }
+
+            .modal-content h2 {
+                color: #1f2937;
+                margin-bottom: 1.5rem;
+                font-size: 1.5rem;
+            }
+
+            .modal-content label {
+                display: block;
+                color: #374151;
+                margin-bottom: 0.5rem;
+                font-weight: 600;
+                text-align: left;
+            }
+
+            .modal-content input {
+                width: 100%;
+                padding: 0.75rem;
+                border: 2px solid #a5b4fc;
+                border-radius: 0.5rem;
+                font-size: 1rem;
+                margin-bottom: 1rem;
+                outline: none;
+            }
+
+            .modal-content input:focus {
+                border-color: #4f46e5;
+                box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.5);
+            }
+
+            .modal-content button {
+                width: 100%;
+                padding: 0.75rem 1.5rem;
+                background-color: #4f46e5;
+                color: white;
+                font-weight: 700;
+                border: none;
+                border-radius: 0.5rem;
+                cursor: pointer;
+                font-size: 1rem;
+                transition: background-color 150ms;
+            }
+
+            .modal-content button:hover {
+                background-color: #4338ca;
+            }
+
+            .modal-content button:focus-visible {
+                outline: 3px solid #4f46e5;
+                outline-offset: 2px;
+            }
+
+            .name-error {
+                color: #dc2626;
+                font-size: 0.875rem;
+                margin-top: 0.5rem;
+            }
+
+            .name-error.hidden {
+                display: none;
+            }
+
+            .skip-link {
+                position: absolute;
+                top: -40px;
+                left: 0;
+                background: #4f46e5;
+                color: white;
+                padding: 8px;
+                text-decoration: none;
+                z-index: 100;
+            }
+
+            .skip-link:focus {
+                top: 0;
+            }
+
+            @keyframes pulse {
+                0%, 100% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+            }
         </style>
     </head>
 
     <body>
+        <a href="#guessInput" class="skip-link">Pular para o campo de palpite</a>
+
+        <!-- Name Modal -->
+        <div id="nameModal" class="modal" role="dialog" aria-labelledby="nameModalTitle" aria-modal="true">
+            <div class="modal-content">
+                <h2 id="nameModalTitle">Bem-vindo!</h2>
+                <label for="nameInput">Por favor, digite seu nome:</label>
+                <input type="text" id="nameInput" required aria-required="true" />
+                <button id="nameSubmit">Continuar</button>
+                <p id="nameError" class="name-error hidden" role="alert"></p>
+            </div>
+        </div>
+
         <div class="container">
             <h1>O Desafio de Adivinhação</h1>
             <p class="subtitle">
-                Adivinhe o número secreto de um dígito! Uma resposta errada gera
-                uma penalidade de 5 minutos.
+                Adivinhe a resposta secreta! Cada resposta incorreta adiciona 5 minutos de espera.
             </p>
 
             <!-- Welcome Message -->
@@ -502,24 +731,41 @@
             </p>
 
             <!-- Message/Status Display -->
-            <div id="messageDisplay">Carregando estado do jogo...</div>
+            <div
+                id="messageDisplay"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+            >
+                Carregando estado do jogo...
+            </div>
 
             <!-- Countdown Timer -->
-            <div id="countdownDisplay" class="hidden">
+            <div
+                id="countdownDisplay"
+                class="hidden"
+                role="timer"
+                aria-live="polite"
+                aria-atomic="true"
+            >
                 Reativar em: 00:00:00
             </div>
 
             <!-- Input and Button Group -->
             <div class="input-group">
+                <label for="guessInput" class="visually-hidden">Digite seu palpite</label>
                 <input
                     type="text"
                     id="guessInput"
                     placeholder="Digite seu palpite"
                     maxlength="5"
                     inputmode="numeric"
+                    aria-label="Campo de palpite"
+                    aria-describedby="messageDisplay"
+                    aria-required="true"
                     disabled
                 />
-                <button id="submitButton" onclick="handleSubmit()" disabled>
+                <button id="submitButton" disabled>
                     Enviar Palpite
                 </button>
             </div>
